@@ -2,16 +2,22 @@ from mpi4py import MPI
 from rdkit import Chem
 from mordred import Calculator, descriptors
 from enum import IntEnum
+import math
 
 
 class WorkOrders():
     def __init__(self, orders):
         self.orders = orders[:]
+        self.batch_size = 10
+        self.idx = -1
+        self.total = len(orders)
+        self.steps = math.ceil(self.total / self.batch_size)
 
     def get_next(self):
-        if len(self.orders) == 0:
+        if self.idx > self.steps:
             return None
-        return self.orders.pop()
+        self.idx += 1
+        return self.orders[self.idx * self.batch_size:(self.idx + 1) * self.batch_size] if self.idx < self.steps else self.orders[self.idx * self.batch_size: self.total]
 
 
 class Worker():
@@ -19,7 +25,11 @@ class Worker():
         self.calc = Calculator(descriptors, ignore_3D=True)
 
     def do(self, data):
-        return self.calc(Chem.MolFromSmiles(data))
+        mols = [Chem.MolFromSmiles(smi) for smi in data]
+        df = self.calc.pandas(mols)
+        df.fill_missing(inplace=True)
+        df['SMILE'] = data
+        return df
 
 
 class WordCounter():
@@ -29,8 +39,8 @@ class WordCounter():
 
 Tags = IntEnum('Tags', 'CONTINUE EXIT')
 
+
 def master():
-    all_data = []
     smiles = []
     with open('smiles.txt', 'r') as input_lines:
         for line in input_lines:
@@ -49,22 +59,25 @@ def master():
             break
         comm.send(obj=anext, dest=i, tag=Tags.CONTINUE)
 
+    df = None
     while 1:
         anext = smiles.get_next()
         if not anext:
             break
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-        all_data.append(data)
+        df = data if df is None else df.append(data, ignore_index=True)
         comm.send(obj=anext, dest=status.Get_source(), tag=Tags.CONTINUE)
 
     for i in range(1, size):
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG)
-        all_data.append(data)
+        df = df.append(data, ignore_index=True)
 
+    # terminate slaves
     for i in range(1, size):
         comm.send(obj=None, dest=i, tag=Tags.EXIT)
 
-    print(all_data, len(all_data))
+    print("Generated {} descriptors".format(len(df)))
+    df.to_feather('mordred.feather')
 
 
 def slave():
