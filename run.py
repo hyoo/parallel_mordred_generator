@@ -3,12 +3,13 @@ from rdkit import Chem
 from mordred import Calculator, descriptors
 from enum import IntEnum
 import math
+import argparse
 
 
 class WorkOrders():
-    def __init__(self, orders):
+    def __init__(self, orders, args):
         self.orders = orders[:]
-        self.batch_size = 10
+        self.batch_size = args.batch_size
         self.idx = -1
         self.total = len(orders)
         self.steps = math.ceil(self.total / self.batch_size)
@@ -17,7 +18,10 @@ class WorkOrders():
         if self.idx > self.steps:
             return None
         self.idx += 1
-        return self.orders[self.idx * self.batch_size:(self.idx + 1) * self.batch_size] if self.idx < self.steps else self.orders[self.idx * self.batch_size: self.total]
+        if self.idx < self.steps:
+            return self.orders[self.idx * self.batch_size: (self.idx + 1) * self.batch_size]
+        else:
+            return self.orders[self.idx * self.batch_size: self.total]
 
 
 class Worker():
@@ -40,13 +44,28 @@ class WordCounter():
 Tags = IntEnum('Tags', 'CONTINUE EXIT')
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=10,
+                        help='Batch size')
+    parser.add_argument('--smiles', type=str, help='Input Smile path')
+    parser.add_argument('--format', default='hdf5',
+                        choices=['csv', 'tsv', 'hdf5'],
+                        help='Dataframe file format. Default hdf5')
+
+    args, unparsed = parser.parse_known_args()
+    return args, unparsed
+
+
 def master():
+    args, unparsed = parse_arguments()
+
     smiles = []
-    with open('smiles.txt', 'r') as input_lines:
+    with open(args.smiles, 'r') as input_lines:
         for line in input_lines:
             smiles.append(line.strip())
 
-    smiles = WorkOrders(smiles)
+    smiles = WorkOrders(smiles, args)
 
     # MPI
     size = MPI.COMM_WORLD.Get_size()
@@ -77,7 +96,14 @@ def master():
         comm.send(obj=None, dest=i, tag=Tags.EXIT)
 
     print("Generated {} descriptors".format(len(df)))
-    df.to_feather('mordred.feather')
+
+    # save
+    if args.format == 'csv':
+        df.to_csv('mordred.csv', float_format='%g', index=False)
+    elif args.format == 'tsv':
+        df.to_csv('mordred.tsv', sep='\t', float_format='%g', index=False)
+    else:
+        df.to_hdf('mordred.h5', key='df', mode='w', complib='blosc:snappy', complevel=9)
 
 
 def slave():
