@@ -16,7 +16,16 @@ mpiexec -n 5 python run.py
 
 ## Parameters
 ```
+usage: run.py [-h] [--batch_size BATCH_SIZE] [--smiles SMILES]
+              [--format {csv,tsv,hdf5}]
 
+optional arguments:
+  -h, --help            show this help message and exit
+  --batch_size BATCH_SIZE
+                        Batch size
+  --smiles SMILES       Input Smile path
+  --format {csv,tsv,hdf5}
+                        Dataframe file format. Default hdf5
 ```
 
 # Running on Theta
