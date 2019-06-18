@@ -30,7 +30,7 @@ class Worker():
 
     def do(self, data):
         mols = [Chem.MolFromSmiles(smi) for smi in data]
-        df = self.calc.pandas(mols)
+        df = self.calc.pandas(mols, quiet=True)
         df.fill_missing(inplace=True)
         df.insert(0, 'SMILE', data)
         return df
