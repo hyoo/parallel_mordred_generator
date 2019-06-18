@@ -28,7 +28,7 @@ class Worker():
         mols = [Chem.MolFromSmiles(smi) for smi in data]
         df = self.calc.pandas(mols)
         df.fill_missing(inplace=True)
-        df['SMILE'] = data
+        df.insert(0, 'SMILE', data)
         return df
 
 
@@ -65,12 +65,12 @@ def master():
         if not anext:
             break
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-        df = data if df is None else df.append(data, ignore_index=True)
+        df = data if df is None else df.append(data, ignore_index=True, sort=False)
         comm.send(obj=anext, dest=status.Get_source(), tag=Tags.CONTINUE)
 
     for i in range(1, size):
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG)
-        df = df.append(data, ignore_index=True)
+        df = df.append(data, ignore_index=True, sort=False)
 
     # terminate slaves
     for i in range(1, size):
