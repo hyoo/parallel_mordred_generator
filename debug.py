@@ -4,6 +4,8 @@ from mordred import Calculator, descriptors
 from enum import IntEnum
 import math
 import argparse
+import socket
+import pandas as pd
 
 
 class WorkOrders():
@@ -25,14 +27,31 @@ class WorkOrders():
 
 
 class Worker():
-    def __init__(self):
+    def __init__(self, rank=None, args=None):
         self.calc = Calculator(descriptors, ignore_3D=True)
+        if rank is not None:
+            self.rank = rank
+        else:
+            raise ValueError('rank is not set properly')
+        if args is not None:
+            self.args = args
+        else:
+            raise ValueError('args is not set properly')
 
     def do(self, data):
-        mols = [Chem.MolFromSmiles(smi) for smi in data]
-        df = self.calc.pandas(mols, quiet=True)
-        df.fill_missing(inplace=True)
-        df.insert(0, 'SMILE', data)
+        if self.args.verbose:
+            print('rank {} received data: {} rows'.format(self.rank, len(data)))
+
+        if self.args.echo:
+            df = pd.DataFrame(data, columns=['SMILE'])
+        else:
+            mols = [Chem.MolFromSmiles(smi) for smi in data]
+            df = self.calc.pandas(mols, quiet=True)
+            df.fill_missing(inplace=True)
+            df.insert(0, 'SMILE', data)
+
+        if self.args.verbose:
+            print('rank {} generated data: {}'.format(self.rank, len(df)))
         return df
 
 
@@ -48,12 +67,17 @@ def parse_arguments():
     parser.add_argument('--format', default='hdf5',
                         choices=['csv', 'tsv', 'hdf5'],
                         help='Dataframe file format. Default hdf5')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='verbose')
+    parser.add_argument('--echo', action='store_true',
+                        help='does not generate. just echo input data')
 
     args, unparsed = parser.parse_known_args()
     return args, unparsed
 
 
 def master(args):
+
     smiles = []
     with open(args.smiles, 'r') as input_lines:
         for line in input_lines:
@@ -65,6 +89,8 @@ def master(args):
     size = MPI.COMM_WORLD.Get_size()
     comm = MPI.COMM_WORLD
     status = MPI.Status()
+    if args.verbose:
+        print('master node initialized at {}'.format(socket.gethostname()))
 
     for i in range(1, size):
         anext = smiles.get_next()
@@ -103,7 +129,11 @@ def master(args):
 def slave(args):
     comm = MPI.COMM_WORLD
     status = MPI.Status()
-    worker = Worker()
+    rank = comm.Get_rank()
+    worker = Worker(rank, args)
+
+    if args.verbose:
+        print('slave rank: {} initialized at {}'.format(rank, socket.gethostname()))
 
     while 1:
         data = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
@@ -115,6 +145,7 @@ def slave(args):
 if __name__ == '__main__':
     rank = MPI.COMM_WORLD.Get_rank()
     size = MPI.COMM_WORLD.Get_size()
+
     args, unparsed = parse_arguments()
 
     if rank == 0:
