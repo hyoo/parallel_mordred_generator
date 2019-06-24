@@ -4,6 +4,7 @@ from mordred import Calculator, descriptors
 from enum import IntEnum
 import math
 import argparse
+import pandas as pd
 
 
 class WorkOrders():
@@ -28,12 +29,14 @@ class Worker():
     def __init__(self):
         self.calc = Calculator(descriptors, ignore_3D=True)
 
+    def gen(self, smile):
+        mol = Chem.MolFromSmiles(smile)
+        desc = self.calc(mol).fill_missing().asdict()
+        desc['SMILE'] = smile
+        return desc
+
     def do(self, data):
-        mols = [Chem.MolFromSmiles(smi) for smi in data]
-        df = self.calc.pandas(mols, quiet=True)
-        df.fill_missing(inplace=True)
-        df.insert(0, 'SMILE', data)
-        return df
+        return [self.gen(smile) for smile in data]
 
 
 Tags = IntEnum('Tags', 'CONTINUE EXIT')
@@ -72,18 +75,18 @@ def master(args):
             break
         comm.send(obj=anext, dest=i, tag=Tags.CONTINUE)
 
-    df = None
+    df = pd.DataFrame()
     while 1:
         anext = smiles.get_next()
         if not anext:
             break
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-        df = data if df is None else df.append(data, ignore_index=True, sort=False)
+        df = df.append(pd.DataFrame(data), ignore_index=True, sort=False)
         comm.send(obj=anext, dest=status.Get_source(), tag=Tags.CONTINUE)
 
     for i in range(1, size):
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG)
-        df = df.append(data, ignore_index=True, sort=False)
+        df = df.append(pd.DataFrame(data), ignore_index=True, sort=False)
 
     # terminate slaves
     for i in range(1, size):
