@@ -26,12 +26,13 @@ class WorkOrders():
 
 
 class Worker():
-    def __init__(self):
+    def __init__(self, args):
         self.calc = Calculator(descriptors, ignore_3D=True)
+        self.args = args
 
     def do(self, data):
         mols = [Chem.MolFromSmiles(smi) for smi in data]
-        df = self.calc.pandas(mols, quiet=True)
+        df = self.calc.pandas(mols, nproc=args.nproc, quiet=True)
         df.fill_missing(inplace=True)
         df.insert(0, 'SMILE', data)
         return df
@@ -49,6 +50,8 @@ def parse_arguments():
     parser.add_argument('--format', default='hdf5',
                         choices=['csv', 'tsv', 'hdf5'],
                         help='Dataframe file format. Default hdf5')
+    parser.add_argument('--nproc', type=int, default=None,
+                        help='number of concurrent generator processes')
 
     args, unparsed = parser.parse_known_args()
     return args, unparsed
@@ -98,7 +101,7 @@ def slave(args):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     status = MPI.Status()
-    worker = Worker()
+    worker = Worker(args)
 
     df = pd.DataFrame()
     while 1:

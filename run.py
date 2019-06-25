@@ -26,8 +26,9 @@ class WorkOrders():
 
 
 class Worker():
-    def __init__(self):
+    def __init__(self, args):
         self.calc = Calculator(descriptors, ignore_3D=True)
+        self.args = args
 
     def gen(self, smile):
         mol = Chem.MolFromSmiles(smile)
@@ -37,6 +38,18 @@ class Worker():
 
     def do(self, data):
         return [self.gen(smile) for smile in data]
+
+
+class ParallelWorker(Worker):
+    def gen(self, rs, smile):
+        desc = rs.fill_missing().asdict()
+        desc['SMILE'] = smile
+        return desc
+
+    def do(self, data):
+        mols = [Chem.MolFromSmiles(smile) for smile in data]
+        iterResults = self.calc.map(mols, nproc=args.nproc, quiet=True)
+        return [self.gen(rs, data[i]) for i, rs in enumerate(iterResults)]
 
 
 Tags = IntEnum('Tags', 'CONTINUE EXIT')
@@ -51,6 +64,8 @@ def parse_arguments():
     parser.add_argument('--format', default='hdf5',
                         choices=['csv', 'tsv', 'hdf5'],
                         help='Dataframe file format. Default hdf5')
+    parser.add_argument('--nproc', type=int, default=None,
+                        help='number of concurrent generator processes')
 
     args, unparsed = parser.parse_known_args()
     return args, unparsed
@@ -106,7 +121,8 @@ def master(args):
 def slave(args):
     comm = MPI.COMM_WORLD
     status = MPI.Status()
-    worker = Worker()
+    # worker = Worker(args)
+    worker = ParallelWorker(args)
 
     while 1:
         data = comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
