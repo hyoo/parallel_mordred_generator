@@ -109,7 +109,7 @@ def slave(args):
         if status.Get_tag() == Tags.EXIT:
             break
         result = worker.do(data)
-        df = df.append(result, ignore_index=True, sort=False)
+        df = df.append(result, ignore_index=True)
         comm.send(obj=len(result), dest=0)
 
     if args.format == 'csv':

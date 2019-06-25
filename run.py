@@ -96,12 +96,12 @@ def master(args):
         if not anext:
             break
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-        df = df.append(pd.DataFrame(data), ignore_index=True, sort=False)
+        df = df.append(pd.DataFrame(data), ignore_index=True)
         comm.send(obj=anext, dest=status.Get_source(), tag=Tags.CONTINUE)
 
     for i in range(1, size):
         data = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG)
-        df = df.append(pd.DataFrame(data), ignore_index=True, sort=False)
+        df = df.append(pd.DataFrame(data), ignore_index=True)
 
     # terminate slaves
     for i in range(1, size):
