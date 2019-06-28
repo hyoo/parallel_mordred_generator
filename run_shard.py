@@ -2,7 +2,7 @@ from mpi4py import MPI
 from rdkit import Chem
 from mordred import Calculator, descriptors
 import pandas as pd
-from generator import WorkOrders, PandasWorker
+from generator import WorkOrders, ParallelWorker
 from generator import parse_arguments, Tags
 
 
@@ -50,7 +50,7 @@ def slave(args):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     status = MPI.Status()
-    worker = PandasWorker(args)
+    worker = ParallelWorker(args)
 
     df = pd.DataFrame()
     while 1:
@@ -58,9 +58,10 @@ def slave(args):
         if status.Get_tag() == Tags.EXIT:
             break
         result = worker.do(data)
-        df = df.append(result, ignore_index=True)
+        df = df.append(pd.DataFrame(result), ignore_index=True)
         comm.send(obj=len(result), dest=0)
 
+    df.reset_index(drop=True, inplace=True)
     if args.format == 'csv':
         df.to_csv('mordred.{}.csv'.format(rank), float_format='%g', index=False)
     elif args.format == 'tsv':
