@@ -28,8 +28,18 @@ class Worker():
         self.calc = Calculator(descriptors, ignore_3D=True)
         self.args = args
 
+    def mol_from_smile(self, smile):
+        try:
+            mol = Chem.MolFromSmiles(smile)
+            if mol is None:
+                mol = Chem.MolFromSmiles(smile, sanitize=False)
+            return mol
+        except Error:
+            print(f"Error in parsing {smile}.")
+            return None
+
     def gen(self, smile):
-        mol = Chem.MolFromSmiles(smile)
+        mol = self.mol_from_smile(smile)
         desc = self.calc(mol).fill_missing().asdict()
         desc['SMILE'] = smile
         return desc
@@ -45,7 +55,7 @@ class ParallelWorker(Worker):
         return desc
 
     def do(self, data):
-        mols = [Chem.MolFromSmiles(smile) for smile in data]
+        mols = [self.mol_from_smile(smile) for smile in data]
         iterResults = self.calc.map(mols, nproc=self.args.nproc, quiet=True)
         return [self.gen(rs, data[i]) for i, rs in enumerate(iterResults)]
 
